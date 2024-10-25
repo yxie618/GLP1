@@ -1,0 +1,572 @@
+
+libname glp1 '/data/dart/2014/ORD_AlAly_201403107D/Yan/glp1_rv1';
+
+
+
+%macro glp1(start,stop, name);
+
+
+data hxglp1;
+merge glp1.cohort_glp1(in=a) glp1.hxicd10_glp1  glp1.hxmed_glp1 glp1.hxlab_glp1 glp1.outcomeicd10_glp1 glp1.addvar_glp1;
+by scrssn;
+if a;
+if exclude=0;
+
+run;
+
+data hxother;
+merge glp1.cohort_addon(in=a) glp1.hxicd10_addon  glp1.hxmed_addon glp1.hxlab_addon glp1.outcomeicd10_addon glp1.addvar_addon;
+by scrssn;
+if a;
+*if index(med,"alpha") or index(med,"amylin") or index(med,"meglitinides") then delete;
+if exclude=0;
+
+run;
+
+
+
+data model;
+set hxglp1 hxother;
+run;
+
+
+%do i= &start %to &stop;
+
+
+data hxmodel;
+set model;
+if disease&i <=0;
+
+if index(group,"GLP1") then cohort="A";
+else  cohort="B";
+
+follow=(endoffollow-t0)/365.25;
+followwt=1/follow;
+
+if odisease&i ^=. and odisease&i >=t0 and odisease&i <=min(endoffollow,glp1date,deathdate) then outcome="Y";
+else outcome="N";
+run;
+
+
+*how many times disease shows up in cohort;
+proc means data=hxmodel noprint;
+var disease1-disease547;
+class cohort;
+output out=icd10_1 sum=disease1-disease547;
+run;
+
+*totals;
+data icd10_1;
+set icd10_1;
+if cohort="" then cohort="Z";
+run;
+
+*transpose to do calculations later;
+proc transpose data=icd10_1 out=icd10_2;
+id cohort;
+run;
+
+*make sure disease happens in at least 10 people in each cohort;
+data icd10_2;
+set icd10_2;
+where A>=100 and B>=100;
+run;
+
+*calculate RR for each comparison;
+data icd10_2(where=(_name_^='_FREQ_'));
+set icd10_2;
+retain totalN totala totalb ;
+if _name_='_FREQ_' then do; totalN=z; totala=a; totalb=b; end;
+RR_AB=(a/(a+b))/((totala-a)/(totala+totalb-a-b));
+
+run;
+
+
+
+*how many times disease shows up in cohort;
+proc means data=hxmodel noprint;
+var disease1-disease547;
+class outcome;
+output out=icd10_3 sum=disease1-disease547;
+weight followwt;
+run;
+
+*totals;
+data icd10_3;
+set icd10_3;
+if outcome="" then outcome="Total";
+run;
+
+*transpose to do calculations later;
+proc transpose data=icd10_3 out=icd10_4;
+id outcome;
+run;
+
+*make sure disease happens in at least 10 people in each cohort;
+data icd10_4;
+set icd10_4;
+if Y>=10 and N>=10;
+run;
+
+*calculate RR for each comparison;
+data icd10_4(where=(_name_^='_FREQ_'));
+set icd10_4;
+retain totalt totaly totaln ;
+if _name_='_FREQ_' then do; totalt=t; totaly=y; totaln=n; end;
+else do; RRCO=(y/(y+n))/((totaly-y)/(totaly+totaln-y-n));  
+	  end;
+run;
+
+
+proc sort data=icd10_2;
+by _name_;
+run;
+proc sort data=icd10_4;
+by _name_;
+run;
+data icd10_5;
+merge icd10_2 icd10_4;
+by _name_;
+run;
+
+data icd10_6;
+set icd10_5;
+if rrco=0 or z=. then delete;
+
+bias_AB=(((A/totala)*(rrco-1))+1)/(((B/totalb)*(rrco-1))+1);
+
+run;
+
+
+*if numerator or denominator got switched, fix them;
+data ICD10_6;
+set ICD10_6 ;
+array ce[1] rr_ab  ;
+array bias[1] bias_ab  ;
+
+if RRCO<1 then RRCO=1/RRCO;
+if RRCO=. then RRCO=1;
+
+do i=1 to 1;
+if CE[i]<1 then CE[i]=1/CE[i];
+if CE[i]=. then CE[i]=1;
+if bias[i]<1 then bias[i]=1/bias[i];
+if bias[i]=. then bias[i]=1;
+end;
+run;
+
+
+/***med***/
+proc means data=hxmodel noprint;
+var med1-med566;
+class cohort;
+output out=med_1 sum=med1-med566;
+run;
+
+*totals;
+data med_1;
+set med_1;
+if cohort="" then cohort="Z";
+run;
+
+*transpose to do calculations later;
+proc transpose data=med_1 out=med_2;
+id cohort;
+run;
+
+*make sure disease happens in at least 10 people in each cohort;
+data med_2;
+set med_2;
+where A>=10 and B>=10;
+run;
+
+*calculate RR for each comparison;
+data med_2(where=(_name_^='_FREQ_'));
+set med_2;
+retain totalN totala totalb totalc totald;
+if _name_='_FREQ_' then do; totalN=z; totala=a; totalb=b; end;
+RR_AB=(a/(a+b))/((totala-a)/(totala+totalb-a-b));
+
+run;
+
+
+
+*how many times disease shows up in cohort;
+proc means data=hxmodel noprint;
+var med1-med566;
+class outcome;
+output out=med_3 sum=med1-med566;
+weight followwt;
+run;
+
+*totals;
+data med_3;
+set med_3;
+if outcome="" then outcome="Total";
+run;
+
+*transpose to do calculations later;
+proc transpose data=med_3 out=med_4;
+id outcome;
+run;
+
+*make sure disease happens in at least 10 people in each cohort;
+data med_4;
+set med_4;
+if Y>=10 and N>=10;
+run;
+
+*calculate RR for each comparison;
+data med_4(where=(_name_^='_FREQ_'));
+set med_4;
+retain totalN totaly totaln ;
+if _name_='_FREQ_' then do; totalN=t; totaly=y; totaln=n; end;
+else do; RRCO=(y/(y+n))/((totaly-y)/(totaly+totaln-y-n));  
+	  end;
+run;
+
+proc sort data=med_2;
+by _name_;
+run;
+proc sort data=med_4;
+by _name_;
+run;
+data med_5;
+merge med_2 med_4;
+by _name_;
+run;
+
+data med_6;
+set med_5;
+if rrco=0 or z=. then delete;
+
+bias_AB=(((A/totala)*(rrco-1))+1)/(((B/totalb)*(rrco-1))+1);
+
+run;
+
+
+*if numerator or denominator got switched, fix them;
+data med_6;
+set med_6 ;
+array ce[1] rr_ab  ;
+array bias[1] bias_ab  ;
+
+if RRCO<1 then RRCO=1/RRCO;
+if RRCO=. then RRCO=1;
+
+do i=1 to 1;
+if CE[i]<1 then CE[i]=1/CE[i];
+if CE[i]=. then CE[i]=1;
+if bias[i]<1 then bias[i]=1/bias[i];
+if bias[i]=. then bias[i]=1;
+end;
+run;
+
+
+
+/**lab**/
+proc means data=hxmodel noprint;
+var hlab1-hlab38 llab1-llab38;
+class cohort;
+output out=lab_1 sum=hlab1-hlab38 llab1-llab38;
+run;
+
+*totals;
+data lab_1;
+set lab_1;
+if cohort="" then cohort="Z";
+run;
+
+*transpose to do calculations later;
+proc transpose data=lab_1 out=lab_2;
+id cohort;
+run;
+
+*make sure disease happens in at least 10 people in each cohort;
+data lab_2;
+set lab_2;
+where A>=10 and B>=10 ;
+run;
+
+*calculate RR for each comparison;
+data lab_2(where=(_name_^='_FREQ_'));
+set lab_2;
+retain totalN totala totalb ;
+if _name_='_FREQ_' then do; totalN=z; totala=a; totalb=b; end;
+RR_AB=(a/(a+b))/((totala-a)/(totala+totalb-a-b));
+
+run;
+
+
+
+*how many times disease shows up in cohort;
+proc means data=hxmodel noprint;
+var hlab1-hlab38 llab1-llab38;
+class outcome;
+output out=lab_3 sum=hlab1-hlab38 llab1-llab38;
+weight followwt;
+run;
+
+*totals;
+data lab_3;
+set lab_3;
+if outcome="" then outcome="Total";
+run;
+
+*transpose to do calculations later;
+proc transpose data=lab_3 out=lab_4;
+id outcome;
+run;
+
+*make sure disease happens in at least 10 people in each cohort;
+data lab_4;
+set lab_4;
+if Y>=10 and N>=10;
+run;
+
+*calculate RR for each comparison;
+data lab_4(where=(_name_^='_FREQ_'));
+set lab_4;
+retain totalN totaly totaln ;
+if _name_='_FREQ_' then do; totalN=t; totaly=y; totaln=n; end;
+else do; RRCO=(y/(y+n))/((totaly-y)/(totaly+totaln-y-n));  
+	  end;
+run;
+
+proc sort data=lab_2;
+by _name_;
+run;
+proc sort data=lab_4;
+by _name_;
+run;
+data lab_5;
+merge lab_2 lab_4;
+by _name_;
+run;
+
+data lab_6;
+set lab_5;
+if rrco=0 or z=. then delete;
+
+bias_AB=(((A/totala)*(rrco-1))+1)/(((B/totalb)*(rrco-1))+1);
+run;
+
+
+*if numerator or denominator got switched, fix them;
+data lab_6;
+set lab_6 ;
+array ce[1] rr_ab ;
+array bias[1] bias_ab  ;
+
+if RRCO<1 then RRCO=1/RRCO;
+if RRCO=. then RRCO=1;
+
+do i=1 to 1;
+if CE[i]<1 then CE[i]=1/CE[i];
+if CE[i]=. then CE[i]=1;
+if bias[i]<1 then bias[i]=1/bias[i];
+if bias[i]=. then bias[i]=1;
+end;
+run;
+
+
+
+
+data hdps;
+length _name_ $32.;
+set icd10_6 lab_6  med_6;
+run;
+
+
+proc sort data=hdps;
+by descending bias_AB;
+run;
+
+
+data hdps1;
+set hdps;
+if _n_<=100;
+run;
+
+%let hdvs_ab= age;
+
+
+data eee;
+set hdps1;
+length cov $32767.;
+retain cov;
+if bias_ab^=1;
+cov=catx(' ',cov,_name_); 
+call symput('hdvs_ab',cov);
+run;
+
+
+
+
+data other;
+set hxmodel;
+week=week(t0);
+week=week+(year(t0)-2017)*52;
+if index(group,"GLP1") then target=1;
+else target=0;
+run;
+
+%removeexterme(usual);
+
+data psother;
+set psother;
+sps=p_1;
+if sps<0.1 or sps>0.9 then delete;
+run;
+
+proc logistic data=psother noprint ;
+class sex sta3n race smoke  ;
+model target(event="1")=
+&predefine
+
+&hdvs_ab;
+output out=psother (keep=group scrssn sps0 odisease&i )  pred=sps0 ;
+run;
+
+
+data psother;
+set psother ;
+if index(group,"GLP1") then att=1;
+else att=sps0/(1-sps0);
+where sps0>0;
+rename att=att1_diease&i ;
+run;
+
+
+
+proc univariate data=psother;
+var att1_diease&i ;
+class group;
+output out=trun pctlpre=trun pctlpts=99.9;
+run;
+
+data trun;
+set trun;
+if index(group,"GLP1") then call symput("tc0",trun99_9);
+else call symput("tc1",trun99_9);
+
+run;
+
+data psother;
+set psother;
+if index(group,"GLP1") and att1_diease&i > &tc0 then att1_diease&i =&tc0;
+else if att1_diease&i > &tc1 and att1_diease&i ^=.  then att1_diease&i =&tc1;
+run;
+
+
+data sumps;
+set psother ;
+ pair=1;
+run;
+
+
+proc sort data=sumps;
+by scrssn group pair;
+run;
+
+
+
+
+data glp1.ps&name;
+merge glp1.ps&name (in=a ) sumps(keep=scrssn group att1_diease&i   odisease&i pair);
+by scrssn group pair;
+if a;
+run;
+
+
+
+data coxmain;
+set glp1.ps&name;
+where att1_diease&i >0;
+if  odisease&i >0 and  odisease&i <=min(deathdate,endoffollow) then do;
+time=  odisease&i -t0;
+outcome =1;
+end;
+
+else do;
+time= min(deathdate,endoffollow)-t0;
+outcome =0;
+end;
+wt=att1_diease&i  ;
+
+run;
+
+
+
+
+ods output parameterestimates=pe ;
+proc phreg data=cox covs(aggregate);
+class  group (ref='GLP1')  ;
+model time * outcome(0)=group/rl ;
+hazardratio group/diff=pairwise;
+weight adjwt;
+strata pair;
+id scrssn;
+run;
+
+
+data pe;
+set pe;
+hazardratio=1/hazardratio;
+waldlower=1/hruppercl;
+waldupper=1/hrlowercl;
+run;
+
+data _null_;
+set _null_;
+run;
+
+
+data combine_long;
+set pe ;
+
+HR=catx("",round(hazardratio,0.01)," (",round(waldlower,0.01),",",round(waldupper,0.01),")");
+outcome="&i";
+keep outcome  excess controlrate exposurerate HR chisq probchisq;
+run;
+
+
+
+
+
+data glp1.result&name;
+set  glp1.result&name combine_long;
+run;
+
+%end;
+
+%mend;
+
+
+%let name=usual1;
+
+data glp1;
+set glp1.cohort_glp1;
+pair=1;
+run;
+data other;
+set glp1.cohort_addon;
+pair=1;
+run;
+
+data glp1.ps&name;
+set glp1 other;
+run;
+
+proc sort data=glp1.ps&name;
+by scrssn group pair;
+run;
+
+
+data glp1.result&name ;
+set _null_;
+length outcome $64.;
+run;
+
+%glp1(start=1, stop=1, name= &name);
+

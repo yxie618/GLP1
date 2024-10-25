@@ -1,7 +1,4 @@
 
-libname glp1 '/data/dart/2014/ORD_AlAly_201403107D/Yan/glp1_rv1';
-
-
 
 %macro glp1(start,stop, name);
 
